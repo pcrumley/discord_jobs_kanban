@@ -38,6 +38,16 @@
         <label class="wide">Notes <textarea name="notes" rows="6" placeholder="Interview dates, who you talked to, follow-ups…"></textarea></label>
       </div>
 
+      <section class="attachments">
+        <div class="attach-head">
+          <span class="attach-title">Attachments</span>
+          <span class="meta attach-hint">Resume, cover letter… copied into the app, so you keep the version you sent. Drop files anywhere on this dialog.</span>
+          <button type="button" id="attach-btn">Attach file…</button>
+        </div>
+        <ul id="attach-list" class="attach-list"></ul>
+        <div id="attach-recent" class="attach-recent"></div>
+      </section>
+
       <p id="dialog-meta" class="meta"></p>
 
       <div class="actions">

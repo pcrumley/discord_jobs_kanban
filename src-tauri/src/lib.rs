@@ -3,6 +3,7 @@
 //! The frontend owns the board state and this side persists it as JSON. Cards can
 //! also arrive from outside the UI through an inbox folder, fed by the Discord poller.
 
+mod attachments;
 mod discord;
 mod jobinfo;
 mod store;
@@ -14,6 +15,7 @@ use notify::{RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
+use attachments::Attachment;
 use discord::DiscordState;
 use store::Settings;
 
@@ -44,6 +46,9 @@ pub struct Card {
     /// True until the user opens the card for the first time.
     #[serde(default)]
     pub unreviewed: bool,
+    /// Files copied into the attachments folder for this card.
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
     /// Any fields the frontend adds later survive a round-trip through an older backend.
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
@@ -65,6 +70,7 @@ impl Card {
             stage_changed_at: now,
             source: String::new(),
             unreviewed: false,
+            attachments: Vec::new(),
             extra: Default::default(),
         }
     }
@@ -165,6 +171,40 @@ async fn fetch_job_details(url: String) -> Result<jobinfo::JobInfo, String> {
     jobinfo::fetch(&jobinfo::client(), &url).await
 }
 
+// ---------- attachments ----------
+
+#[tauri::command]
+fn attach_files(app: AppHandle, card_id: String, paths: Vec<String>) -> Result<Vec<Attachment>, String> {
+    attachments::attach(&app, &card_id, &paths)
+}
+
+#[tauri::command]
+fn attach_from_card(app: AppHandle, card_id: String, from_card_id: String, name: String) -> Result<Attachment, String> {
+    attachments::attach_from_card(&app, &card_id, &from_card_id, &name)
+}
+
+#[tauri::command]
+fn open_attachment(app: AppHandle, card_id: String, name: String) -> Result<(), String> {
+    let path = attachments::path_of(&app, &card_id, &name)?;
+    tauri_plugin_opener::open_path(path, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn reveal_attachment(app: AppHandle, card_id: String, name: String) -> Result<(), String> {
+    let path = attachments::path_of(&app, &card_id, &name)?;
+    tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_attachment(app: AppHandle, card_id: String, name: String) -> Result<(), String> {
+    attachments::remove(&app, &card_id, &name)
+}
+
+#[tauri::command]
+fn remove_card_attachments(app: AppHandle, card_id: String) -> Result<(), String> {
+    attachments::remove_all(&app, &card_id)
+}
+
 // ---------- settings / discord ----------
 
 #[tauri::command]
@@ -222,6 +262,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         // Remembers window size and position between launches.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(DiscordState { status: Mutex::new(discord::Status::default()) })
@@ -239,6 +280,12 @@ pub fn run() {
             board_path,
             take_inbox,
             fetch_job_details,
+            attach_files,
+            attach_from_card,
+            open_attachment,
+            reveal_attachment,
+            remove_attachment,
+            remove_card_attachments,
             get_settings,
             save_settings,
             test_discord,

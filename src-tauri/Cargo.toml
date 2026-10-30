@@ -23,3 +23,4 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time"] }
 tauri-plugin-window-state = "2.5.0"
 jiff = "0.2.38"
+tauri-plugin-dialog = "2.8.4"

@@ -8,6 +8,7 @@ A small desktop kanban board for running a job search, built with [Tauri](https:
 - Cards track company, role, location, salary, posting URL, contact, notes, and how long they've sat in the current stage.
 - **Discord capture**: share a job link into a private Discord channel (from your phone, from WhatsApp, anywhere) and it appears in Inbox with company, role, location and salary filled in from the posting page. Setup instructions are in the app under ⚙ Discord.
 - **Triage mode**: step through Inbox cards one at a time with keyboard shortcuts (keep, applied, pass, later).
+- **Attachments**: attach your resume, cover letter or anything else to a card. Files are copied into the app's data folder so you keep the exact version you sent. Drag files onto a card, or use the picker and recent-files quick-pick in the edit dialog.
 - Tracking and referral parameters are stripped from links; short links are resolved.
 - Auto-saves to a JSON file in the per-user app data directory (on Linux, `~/.local/share/dev.patrick.jobkanban/board.json`).
 

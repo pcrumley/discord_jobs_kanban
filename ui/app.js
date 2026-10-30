@@ -18,6 +18,14 @@ const store = tauri
       saveSettings: (settings) => tauri.core.invoke('save_settings', { settings }),
       testDiscord: (token, channelId) => tauri.core.invoke('test_discord', { token, channelId }),
       discordStatus: () => tauri.core.invoke('discord_status'),
+      pickFiles: () => tauri.dialog.open({ multiple: true, title: 'Attach files' }),
+      attachFiles: (cardId, paths) => tauri.core.invoke('attach_files', { cardId, paths }),
+      attachFromCard: (cardId, fromCardId, name) => tauri.core.invoke('attach_from_card', { cardId, fromCardId, name }),
+      openAttachment: (cardId, name) => tauri.core.invoke('open_attachment', { cardId, name }),
+      revealAttachment: (cardId, name) => tauri.core.invoke('reveal_attachment', { cardId, name }),
+      removeAttachment: (cardId, name) => tauri.core.invoke('remove_attachment', { cardId, name }),
+      removeCardAttachments: (cardId) => tauri.core.invoke('remove_card_attachments', { cardId }),
+      onFileDrop: (fn) => tauri.webview.getCurrentWebview().onDragDropEvent(fn),
     }
   : {
       load: async () => JSON.parse(localStorage.getItem('board') || 'null') || defaultBoard(),
@@ -31,6 +39,14 @@ const store = tauri
       saveSettings: async () => { throw new Error('only available in the desktop app'); },
       testDiscord: async () => { throw new Error('only available in the desktop app'); },
       discordStatus: async () => ({ configured: false }),
+      pickFiles: async () => { throw new Error('only available in the desktop app'); },
+      attachFiles: async () => { throw new Error('only available in the desktop app'); },
+      attachFromCard: async () => { throw new Error('only available in the desktop app'); },
+      openAttachment: async () => {},
+      revealAttachment: async () => {},
+      removeAttachment: async () => {},
+      removeCardAttachments: async () => {},
+      onFileDrop: async () => {},
     };
 
 function defaultBoard() {
@@ -189,6 +205,7 @@ function renderCard(card, col) {
     <div class="line">
       ${bits.length ? `<span>${bits.join(' · ')}</span>` : ''}
       <span class="spacer"></span>
+      ${card.attachments?.length ? `<span class="clip" title="${card.attachments.length} attachment${card.attachments.length === 1 ? '' : 's'}">📎 ${card.attachments.length}</span>` : ''}
       ${stageDays !== null ? `<span class="${isStale ? 'stale' : ''}" title="Days in this stage">${stageDays}d</span>` : ''}
       ${card.url ? `<a class="link" href="#" title="${esc(card.url)}">link ↗</a>` : ''}
     </div>`;
@@ -277,10 +294,21 @@ function attachDropZone(zone) {
 
 let editingId = null;
 let newCardCol = null;
+// For a card that hasn't been saved yet, attachments are collected under a pre-generated id.
+let draftId = null;
+let draftAttachments = [];
+
+/// The card the edit dialog is currently about, saved or not.
+function dialogCard() {
+  if (editingId) return findCard(editingId)?.card || null;
+  return { id: draftId, attachments: draftAttachments };
+}
 
 function openDialog(cardId, colId = null) {
   editingId = cardId;
   newCardCol = colId;
+  draftId = cardId ? null : uid();
+  draftAttachments = [];
   form.reset();
 
   const select = form.elements.column;
@@ -312,9 +340,128 @@ function openDialog(cardId, colId = null) {
     meta.textContent = '';
     $('#delete-btn').hidden = true;
   }
+  renderAttachments();
   dialog.showModal();
   form.elements.company.focus();
 }
+
+// ---------- attachments ----------
+
+function fmtSize(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderAttachments() {
+  const card = dialogCard();
+  const list = $('#attach-list');
+  list.textContent = '';
+  for (const att of card?.attachments || []) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="name" title="Open">${esc(att.name)}</span><span class="size">${fmtSize(att.size)}</span>
+      <button type="button" class="icon-btn" data-do="reveal" title="Show in folder">📁</button>
+      <button type="button" class="icon-btn" data-do="remove" title="Remove attachment">✕</button>`;
+    li.querySelector('.name').addEventListener('click', () => store.openAttachment(card.id, att.name).catch(showAttachError));
+    li.querySelector('[data-do="reveal"]').addEventListener('click', () => store.revealAttachment(card.id, att.name).catch(showAttachError));
+    li.querySelector('[data-do="remove"]').addEventListener('click', async () => {
+      try {
+        await store.removeAttachment(card.id, att.name);
+        card.attachments.splice(card.attachments.indexOf(att), 1);
+        if (editingId) scheduleSave();
+        renderAttachments();
+      } catch (e) { showAttachError(e); }
+    });
+    list.appendChild(li);
+  }
+  renderRecentAttachments(card);
+}
+
+/// Files attached to other cards recently, so the same resume is one click away.
+function recentAttachments(excludeCard) {
+  const seen = new Map();
+  for (const col of board.columns) for (const c of col.cards) {
+    if (c === excludeCard) continue;
+    for (const a of c.attachments || []) {
+      const prev = seen.get(a.name);
+      if (!prev || a.added_at > prev.added_at) seen.set(a.name, { name: a.name, added_at: a.added_at, fromCardId: c.id, uses: (prev?.uses || 0) + 1 });
+      else prev.uses++;
+    }
+  }
+  return [...seen.values()].sort((a, b) => (b.added_at || '').localeCompare(a.added_at || '')).slice(0, 5);
+}
+
+function renderRecentAttachments(card) {
+  const box = $('#attach-recent');
+  box.textContent = '';
+  const have = new Set((card?.attachments || []).map((a) => a.name));
+  const recent = recentAttachments(card).filter((r) => !have.has(r.name));
+  if (!recent.length) return;
+  box.append('Recent: ');
+  for (const r of recent) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.textContent = r.name;
+    chip.title = `Attach a copy (used on ${r.uses} card${r.uses === 1 ? '' : 's'})`;
+    chip.addEventListener('click', async () => {
+      try {
+        const att = await store.attachFromCard(card.id, r.fromCardId, r.name);
+        addAttachmentToCard(card, att);
+      } catch (e) { showAttachError(e); }
+    });
+    box.appendChild(chip);
+  }
+}
+
+function addAttachmentToCard(card, ...atts) {
+  card.attachments = card.attachments || [];
+  card.attachments.push(...atts);
+  if (editingId && findCard(card.id)) scheduleSave();
+  if (dialog.open && dialogCard()?.id === card.id) renderAttachments();
+  else render();
+}
+
+function showAttachError(e) {
+  const msg = 'Attachment error: ' + e;
+  if (dialog.open) $('#dialog-meta').textContent = msg;
+  else setStatus(msg, true);
+}
+
+async function attachPaths(card, paths) {
+  if (!paths?.length) return;
+  try {
+    const atts = await store.attachFiles(card.id, paths);
+    addAttachmentToCard(card, ...atts);
+    setStatus(`Attached ${atts.length} file${atts.length === 1 ? '' : 's'}`);
+  } catch (e) { showAttachError(e); }
+}
+
+$('#attach-btn').addEventListener('click', async () => {
+  const card = dialogCard();
+  if (!card) return;
+  try {
+    let picked = await store.pickFiles();
+    if (!picked) return;
+    if (!Array.isArray(picked)) picked = [picked];
+    await attachPaths(card, picked);
+  } catch (e) { showAttachError(e); }
+});
+
+// Files dragged in from the desktop: onto the open edit dialog, or onto a specific card.
+store.onFileDrop((event) => {
+  const { type, paths, position } = event.payload || {};
+  if (type === 'enter' || type === 'over') { document.body.classList.add('file-drag'); return; }
+  document.body.classList.remove('file-drag');
+  if (type !== 'drop' || !paths?.length) return;
+  if (dialog.open) { attachPaths(dialogCard(), paths); return; }
+  if (document.querySelector('dialog[open]')) return;
+  const scale = window.devicePixelRatio || 1;
+  const el = position ? document.elementFromPoint(position.x / scale, position.y / scale) : null;
+  const cardEl = el?.closest?.('.card');
+  if (!cardEl) { setStatus('Drop files onto a card, or open a card first', true); return; }
+  attachPaths(findCard(cardEl.dataset.id).card, paths);
+});
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -332,16 +479,26 @@ form.addEventListener('submit', (e) => {
       board.columns.find((c) => c.id === targetCol).cards.push(found.card);
     }
   } else {
-    const card = { id: uid(), ...data, created_at: now(), stage_changed_at: now() };
+    const card = { id: draftId, ...data, attachments: draftAttachments, created_at: now(), stage_changed_at: now() };
     board.columns.find((c) => c.id === targetCol).cards.push(card);
   }
+  draftId = null;
+  draftAttachments = [];
   dialog.close();
   render();
   scheduleSave();
 });
 
 $('#cancel-btn').addEventListener('click', () => dialog.close());
-dialog.addEventListener('close', render);
+dialog.addEventListener('close', () => {
+  // Closing a never-saved card (Cancel or Esc) throws away anything attached to the draft.
+  if (!editingId && draftId && draftAttachments.length) {
+    store.removeCardAttachments(draftId).catch(() => {});
+  }
+  draftId = null;
+  draftAttachments = [];
+  render();
+});
 
 $('#fetch-btn').addEventListener('click', async () => {
   const url = form.elements.url.value.trim();
@@ -371,6 +528,7 @@ $('#delete-btn').addEventListener('click', () => {
   if (!found) return dialog.close();
   if (!confirm(`Delete "${found.card.company || 'this card'}"?`)) return;
   found.col.cards.splice(found.idx, 1);
+  if (found.card.attachments?.length) store.removeCardAttachments(found.card.id).catch(() => {});
   dialog.close();
   render();
   scheduleSave();
@@ -508,6 +666,7 @@ function triageAct(act) {
       break;
     case 'pass':
       inbox.cards.splice(triageIndex, 1);
+      if (card.attachments?.length) store.removeCardAttachments(card.id).catch(() => {});
       triageUndo = { card, colId: null, index: triageIndex };
       break;
     case 'undo':
