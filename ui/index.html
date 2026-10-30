@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Kanban</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Job Kanban</h1>
+    <input id="search" type="search" placeholder="Filter by company, role, location…" autocomplete="off">
+    <button id="triage-btn" class="primary" hidden>Triage <span id="triage-count"></span></button>
+    <span id="status" class="status" aria-live="polite"></span>
+    <button id="data-path" class="ghost" title="Show where the board is saved">Data file</button>
+    <button id="settings-btn" class="ghost" title="Discord capture settings">⚙ Discord</button>
+  </header>
+
+  <main id="board" class="board"></main>
+
+  <dialog id="card-dialog">
+    <form id="card-form" method="dialog">
+      <h2 id="dialog-title">New card</h2>
+
+      <div class="grid">
+        <label>Company <input name="company" required autocomplete="off"></label>
+        <label>Role <input name="role" autocomplete="off"></label>
+        <label>Location <input name="location" placeholder="Remote, Austin, …" autocomplete="off"></label>
+        <label>Salary <input name="salary" placeholder="$120k–140k" autocomplete="off"></label>
+        <label class="wide">Posting URL
+          <span class="row">
+            <input name="url" type="url" placeholder="https://…" autocomplete="off">
+            <button type="button" id="fetch-btn" title="Fill company, role, location and salary from the posting page">Fetch details</button>
+          </span>
+        </label>
+        <label class="wide">Contact <input name="contact" placeholder="Recruiter name, email" autocomplete="off"></label>
+        <label class="wide">Stage <select name="column"></select></label>
+        <label class="wide">Notes <textarea name="notes" rows="6" placeholder="Interview dates, who you talked to, follow-ups…"></textarea></label>
+      </div>
+
+      <p id="dialog-meta" class="meta"></p>
+
+      <div class="actions">
+        <button type="button" id="delete-btn" class="danger">Delete</button>
+        <span class="spacer"></span>
+        <button type="button" id="cancel-btn" class="ghost">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="triage-dialog">
+    <div class="triage">
+      <div class="triage-head">
+        <h2>Triage</h2>
+        <span id="triage-progress" class="meta"></span>
+        <span class="spacer"></span>
+        <button type="button" id="triage-close" class="ghost" title="Close (Esc)">Close</button>
+      </div>
+
+      <div id="triage-card" class="triage-card">
+        <div class="t-company" id="t-company"></div>
+        <div class="t-role" id="t-role"></div>
+        <div class="t-line" id="t-line"></div>
+        <a href="#" id="t-url" class="t-url"></a>
+        <pre id="t-notes" class="t-notes"></pre>
+      </div>
+
+      <div class="triage-actions">
+        <button type="button" data-act="open">Open posting <kbd>O</kbd></button>
+        <button type="button" data-act="edit">Edit <kbd>E</kbd></button>
+        <span class="spacer"></span>
+        <button type="button" data-act="pass" class="danger">Pass <kbd>P</kbd></button>
+        <button type="button" data-act="later">Later <kbd>L</kbd></button>
+        <button type="button" data-act="keep" class="primary">Keep → Wishlist <kbd>K</kbd></button>
+        <button type="button" data-act="apply" class="primary">Applied <kbd>A</kbd></button>
+      </div>
+      <p class="meta triage-foot">
+        <span id="triage-undo-wrap" hidden><button type="button" id="triage-undo" class="ghost">Undo <kbd>U</kbd></button></span>
+        Pass deletes the card. Later leaves it in Inbox and moves on.
+      </p>
+    </div>
+  </dialog>
+
+  <dialog id="settings-dialog">
+    <form id="settings-form" method="dialog">
+      <h2>Discord capture</h2>
+      <p class="help">
+        Share a job link into a private Discord channel (from your phone, from WhatsApp, anywhere) and it
+        shows up here in Wishlist with the details filled in. The app checks the channel every 15 seconds
+        while open and catches up on anything posted while it was closed.
+      </p>
+
+      <details class="setup">
+        <summary>How to set this up (one time, about five minutes)</summary>
+        <ol>
+          <li>Go to <a href="#" data-url="https://discord.com/developers/applications">discord.com/developers/applications</a> and click <b>New Application</b>. Name it anything, e.g. “Job Inbox”.</li>
+          <li>In the left menu open <b>Bot</b>. Click <b>Reset Token</b>, copy the token, and paste it below. Treat it like a password.</li>
+          <li>Still on the Bot page, under <b>Privileged Gateway Intents</b> turn on <b>Message Content Intent</b> and save.</li>
+          <li>Open <b>OAuth2</b> in the left menu. Under <b>OAuth2 URL Generator</b> tick the <b>bot</b> scope, then tick the permissions <b>View Channels</b>, <b>Read Message History</b>, and <b>Add Reactions</b>. Open the generated URL and invite the bot to a server you own (make a new private server if you don't have one).</li>
+          <li>In Discord, create or pick a channel for job links. Enable <b>Developer Mode</b> (User Settings → Advanced), then right-click the channel → <b>Copy Channel ID</b> and paste it below.</li>
+          <li>Click <b>Test connection</b>, then <b>Save</b>. Post a link in the channel; the bot reacts with ✅ once it has captured it.</li>
+        </ol>
+      </details>
+
+      <div class="grid">
+        <label class="wide">Bot token <input name="discord_token" type="password" autocomplete="off" spellcheck="false"></label>
+        <label class="wide">Channel ID <input name="discord_channel_id" inputmode="numeric" autocomplete="off" placeholder="e.g. 1234567890123456789"></label>
+      </div>
+
+      <p id="settings-status" class="meta"></p>
+
+      <div class="actions">
+        <button type="button" id="test-discord-btn">Test connection</button>
+        <span class="spacer"></span>
+        <button type="button" id="settings-cancel-btn" class="ghost">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

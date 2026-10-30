@@ -1,0 +1,25 @@
+[package]
+name = "kanban"
+version = "0.1.0"
+edition = "2024"
+description = "A kanban board for tracking a job search"
+
+[lib]
+name = "kanban_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "gzip", "http2", "charset"] }
+regex = "1.13.1"
+notify = "8.2.1"
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time"] }
+tauri-plugin-window-state = "2.5.0"
+jiff = "0.2.38"
