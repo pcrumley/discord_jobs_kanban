@@ -10,7 +10,7 @@ A small desktop kanban board for running a job search, built with [Tauri](https:
 - **Triage mode**: step through Inbox cards one at a time with keyboard shortcuts (keep, applied, pass, later).
 - **Attachments**: attach your resume, cover letter or anything else to a card. Files are copied into the app's data folder so you keep the exact version you sent. Drag files onto a card, or use the picker and recent-files quick-pick in the edit dialog.
 - Tracking and referral parameters are stripped from links; short links are resolved.
-- Auto-saves to a JSON file in the per-user app data directory (on Linux, `~/.local/share/dev.patrick.jobkanban/board.json`).
+- Auto-saves to a JSON file in the per-user app data directory (on Linux, `~/.local/share/dev.jobkanban/board.json`).
 
 ## Running
 

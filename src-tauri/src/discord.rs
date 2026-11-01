@@ -79,7 +79,7 @@ struct Emoji {
 
 fn api_client() -> reqwest::Client {
     reqwest::Client::builder()
-        .user_agent("DiscordBot (https://github.com/patrick/kanban, 0.1)")
+        .user_agent("DiscordBot (https://github.com/pcrumley/discord_jobs_kanban, 0.1)")
         .timeout(Duration::from_secs(20))
         .build()
         .expect("reqwest client")
